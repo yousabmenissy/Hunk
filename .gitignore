@@ -1,0 +1,6 @@
+.vscode
+libtest
+tests
+*.o
+*.a
+*.ol
