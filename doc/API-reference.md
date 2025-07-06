@@ -638,13 +638,13 @@ If multiple calls are made the data will be concatinated in the final response.
 Return the number of bytes written on success, -1 on failure.
 
 ```c
-void id_handler(Request *req, ResWriter *res) {
+void hello_handler(Request *req, ResWriter *res) {
   HK_write("hello world\n", sizeof("hello world\n") - 1);
 }
 ```
 
 ```c
-void id_handler(Request *req, ResWriter *res) {
+void hello_handler(Request *req, ResWriter *res) {
   HK_write("hello ", sizeof("hello ") - 1);
   HK_write("world", sizeof("world") - 1);
   HK_write("\n", 1);
