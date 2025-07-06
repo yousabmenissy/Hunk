@@ -164,7 +164,7 @@ static inline bool have_header(char *src, char *end, const char *header_key, con
  * Round up the input into a multiple of 64 blocks
  */
 static inline size_t round_to_blocks(size_t size) {
-  size_t nblocks = BYTES_TO_BLOCKS(size);
+  size_t nblocks = ALIGN_TO_BLOCKS(size);
   nblocks = CEIL_BLOCKS(nblocks);
   return nblocks;
 }

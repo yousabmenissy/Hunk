@@ -11,9 +11,10 @@
 #define DEF_HTTP_TLCPORT (443) // Default https port
 
 #define MP_BLOCK    (4)
-#define KB          (1024)
-#define ZC_RES      (KB * 64)
 #define BITMAP_SIZE (64)
+
+#define KB     (1024)
+#define ZC_RES (KB * 64)
 
 #define STRLEN(s)      (sizeof(s) - 1)
 #define PTR_DIFF(x, y) ((ptr_diff((uintptr_t)x, (uintptr_t)y)))
@@ -25,10 +26,10 @@
 #define GETBI(ptr) (PTR_DIFF(ptr, pool.bpool) / MP_BLOCK)
 #define GETCI(ptr) (PTR_DIFF(ptr, pool.cpool) / sizeof(Conn))
 
-#define USEC(cindex)       (MARK_BIT_USED(pool.freecs[(cindex) / BITMAP_SIZE], (cindex)))
-#define FREEC(cindex)      (MARK_BIT_FREE(pool.freecs[(cindex) / BITMAP_SIZE], (cindex)))
-#define IS_FREEC(cindex)   (BIT_IS_FREE(pool.freecs[(cindex) / BITMAP_SIZE], (cindex)))
 #define GETCW(cindex)      (pool.freecs[(cindex) / BITMAP_SIZE])
+#define USEC(cindex)       (MARK_BIT_USED(GETCW(cindex), (cindex)))
+#define FREEC(cindex)      (MARK_BIT_FREE(GETCW(cindex), (cindex)))
+#define IS_FREEC(cindex)   (BIT_IS_FREE(GETCW(cindex), (cindex)))
 #define FREECW(cindex)     (GETCW((cindex)) = UINT64_MAX)
 #define USECW(cindex)      (GETCW((cindex)) = 0)
 #define CW_IS_FREE(cindex) (GETCW((cindex)) == UINT64_MAX)
@@ -47,26 +48,22 @@
 #define BLOCKS_TO_BYTES(nblocks)  ((nblocks)*MP_BLOCK);
 #define BITMAP_ELEMENTS(elements) (((elements) + (BITMAP_SIZE - 1)) / BITMAP_SIZE)
 
-#define IN_POOL(ptr)                 ((void *)ptr >= pool.bpool && (void *)ptr <= (pool.bpool + (pool.npages * pagesize)))
+#define IN_POOL(ptr)                 ((void *)ptr >= pool.bpool && (void *)ptr < (pool.bpool + (pool.npages * pagesize)))
 #define ALIGN_TO_PAGESIZE(buff_size) (((buff_size) + (pagesize - 1)) & ~(pagesize - 1))
+#define ALIGN_TO_BLOCKS(buff_size)   (((buff_size) + (MP_BLOCK - 1)) / MP_BLOCK)
 #define BYTES_TO_PAGES(size)         (ALIGN_TO_PAGESIZE((size)) / pagesize)
-#define BYTES_TO_BLOCKS(buff_size)   (((buff_size) + (MP_BLOCK - 1)) / MP_BLOCK)
 #define CEIL_BLOCKS(nblocks)         (((nblocks) + 63) & ~63)
 
 typedef struct iovec  IOV;
 typedef struct msghdr MSG;
 
 typedef enum UOP {
-  POLL = IORING_OP_POLL_ADD,
   SENDMSG = IORING_OP_SENDMSG,
   ACCEPT = IORING_OP_ACCEPT,
-  SEND = IORING_OP_SEND,
   RECV = IORING_OP_RECV,
   SENDMSGZC = IORING_OP_SENDMSG_ZC,
-  PEEK = 50,
-  FRECV,
-  CANCEL,
-  TIMEOUT,
+  FRECV = 50,
+  TIMEOUT = 51,
 } UOP;
 
 typedef struct Conntimeout {
@@ -80,8 +77,9 @@ typedef struct Conn {
 
   int fd;
   struct {
-    IOV      iov[2];
-    IOV      rec[2];
+    IOV iov[2];
+    IOV rec[2];
+
     uint64_t len;
   } recv;
 
@@ -100,29 +98,22 @@ typedef struct Conn {
 } Conn;
 
 typedef struct MPool {
-  // The allocated pool of blocks
   void *bpool;
 
-  // The allocated pool of connections
   Conn *cpool;
 
   IOV *iovpool;
 
   IOV *recpool;
 
-  // The size of the pool in pages
   uint32_t npages;
 
-  // The size of the pool in blocks
   uint32_t nblocks;
 
-  // The availability of each block
   uint64_t *freebs;
 
-  // The availability of each conn
   uint64_t *freecs;
 
-  // Socket read timeout
   uint32_t timeout;
 } MPool;
 
