@@ -5,19 +5,25 @@
 #include "hunk.h"
 #include "liburing.h"
 
+#define IOURING_QUEUE_LIMIT (4096)
+
 #define DEF_HTTP_PORT    (80)  // Default http port
 #define DEF_HTTP_TLCPORT (443) // Default https port
 
-#define MP_BLOCK            (4)
-#define IOURING_QUEUE_LIMIT (4096)
-#define KB                  (1024)
-#define ZC_RES              (KB * 64)
-#define BITMAP_SIZE         (64)
-#define STRLEN(s)           (sizeof(s) - 1)
+#define MP_BLOCK    (4)
+#define KB          (1024)
+#define ZC_RES      (KB * 64)
+#define BITMAP_SIZE (64)
+
+#define STRLEN(s)      (sizeof(s) - 1)
+#define PTR_DIFF(x, y) ((ptr_diff((uintptr_t)x, (uintptr_t)y)))
 
 #define BIT_IS_FREE(word, bit)   (((word) >> (bit)) & 1)
 #define MARK_BIT_USED(word, bit) ((word) &= ~(1ULL << (bit)))
 #define MARK_BIT_FREE(word, bit) ((word) |= (1ULL << (bit)))
+
+#define GETBI(ptr) (PTR_DIFF(ptr, pool.bpool) / MP_BLOCK)
+#define GETCI(ptr) (PTR_DIFF(ptr, pool.cpool) / sizeof(Conn))
 
 #define USEC(cindex)       (MARK_BIT_USED(pool.freecs[(cindex) / BITMAP_SIZE], (cindex)))
 #define FREEC(cindex)      (MARK_BIT_FREE(pool.freecs[(cindex) / BITMAP_SIZE], (cindex)))
@@ -38,7 +44,6 @@
 #define BW_IS_USED(bindex) (GETBW((bindex)) == 0)
 
 #define GET_POOL_BY_INDEX(bindex) (pool.bpool + ((bindex)*MP_BLOCK))
-#define GETBI(ptr)                ((ptr_diff((uintptr_t)ptr, (uintptr_t)pool.bpool)) / MP_BLOCK)
 #define BLOCKS_TO_BYTES(nblocks)  ((nblocks)*MP_BLOCK);
 #define BITMAP_ELEMENTS(elements) (((elements) + (BITMAP_SIZE - 1)) / BITMAP_SIZE)
 
@@ -64,11 +69,6 @@ typedef enum UOP {
   TIMEOUT,
 } UOP;
 
-typedef enum CFS {
-  CF_SKIP_SOCK = (1 << 0), // Don't close the socket
-  CF_CANCEL = (1 << 1),    // About to be closed
-} CFS;
-
 typedef struct Conntimeout {
   uint8_t  op;
   uint64_t last_used;
@@ -79,15 +79,9 @@ typedef struct Conn {
   uint8_t op;
 
   int fd;
-  int flags;
-
-  uint16_t cqe_count;
-  uint32_t cindex;
-
   struct {
-    IOV iov[2];
-    IOV rec[2];
-
+    IOV      iov[2];
+    IOV      rec[2];
     uint64_t len;
   } recv;
 
@@ -139,7 +133,8 @@ extern ServConfig config;
 extern int pipe_sz;
 extern int pipe_in, pipe_out, nullfd;
 
-extern MPool  pool;
-extern Conn  *current_conn;
-extern size_t pagesize;
+extern MPool    pool;
+extern Conn    *current_conn;
+extern Request *current_req;
+extern size_t   pagesize;
 #endif

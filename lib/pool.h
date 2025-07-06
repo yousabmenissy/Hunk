@@ -139,7 +139,6 @@ static inline Conn *MP_use(int fd, size_t recv_nblocks, size_t send_nblocks) {
   memset(conn, 0, sizeof(Conn));
 
   conn->fd = fd;
-  conn->cindex = cindex;
   conn->timeout.op = TIMEOUT;
   conn->timeout.conn = conn;
   conn->send.iov = GET_CIOV(cindex);
@@ -240,16 +239,16 @@ static inline int MP_expand(Conn *conn, size_t nblocks, bool once) {
 }
 
 static inline int MP_free(Conn *conn) {
-  if (!conn)
+  if (!conn || conn->fd == -1)
     return -1;
 
-  size_t cindex = conn->cindex;
+  size_t cindex = GETCI(conn);
   MP_shed(conn->recv.rec, 2);
   MP_shed(conn->send.rec, conn->send.reclen);
   if (IS_FREEC(cindex))
     return 0;
 
-  if (conn->fd != -1 && !(conn->flags & CF_SKIP_SOCK))
+  if (conn->fd != -1)
     close(conn->fd);
 
   FREEC(cindex);
@@ -260,15 +259,6 @@ static inline int MP_free(Conn *conn) {
 
 static inline void MP_clear(Conn *conn) {
   if (!conn || conn->fd == -1)
-    return;
-
-  if (!(conn->flags & CF_CANCEL)) {
-    if (conn->cqe_count > 0)
-      ucancel(conn);
-    conn->flags |= CF_CANCEL;
-  }
-
-  if (conn->cqe_count > 0)
     return;
 
   shutdown(conn->fd, SHUT_RDWR);

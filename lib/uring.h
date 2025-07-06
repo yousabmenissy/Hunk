@@ -38,7 +38,6 @@ static inline int urecv(Conn *conn, IOV *iov) {
   if (res < 0)
     return -1;
 
-  conn->cqe_count++;
   return res;
 }
 
@@ -81,7 +80,7 @@ static inline int usendmsg(Conn *conn, size_t iov_index, size_t nios) {
   msg->msg_iovlen = nios;
   if (zc) {
     io_uring_prep_sendmsg_zc(sqe, conn->fd, msg, MSG_NOSIGNAL);
-    conn->send.zc_notifs++, conn->cqe_count++;
+    conn->send.zc_notifs++;
   } else {
     io_uring_prep_sendmsg(sqe, conn->fd, msg, MSG_NOSIGNAL);
   }
@@ -89,7 +88,6 @@ static inline int usendmsg(Conn *conn, size_t iov_index, size_t nios) {
   if (res < 0)
     return -1;
 
-  conn->cqe_count++;
   return res;
 }
 
@@ -109,7 +107,6 @@ static inline int utimeout(Conn *conn) {
   if (res < 0)
     return -1;
 
-  conn->cqe_count++;
   return res;
 }
 
@@ -126,7 +123,6 @@ static inline int ucancel(Conn *conn) {
   if (res < 0)
     return -1;
 
-  conn->cqe_count = 0;
   return res;
 }
 

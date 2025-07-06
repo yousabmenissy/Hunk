@@ -7,6 +7,9 @@
 #include <sys/sysinfo.h>
 
 static inline void new_conn(int connfd) {
+  if (connfd <= 0)
+    return;
+
   size_t nblocks = round_to_blocks(config.max_headers_size);
   current_conn = MP_use(connfd, nblocks, nblocks);
   if (!current_conn)
@@ -17,6 +20,9 @@ static inline void new_conn(int connfd) {
 }
 
 static inline int resubmit_sendmsg(Conn *conn, int res) {
+  if (!conn || conn->fd == -1)
+    return -1;
+
   IOV   *iov;
   size_t nbytes = res;
   size_t iov_index = 0;
@@ -42,6 +48,9 @@ static inline int resubmit_sendmsg(Conn *conn, int res) {
 }
 
 static inline int handle_sendmsg_complete(Conn *conn) {
+  if (!conn || conn->fd == -1)
+    return -1;
+
   IOV *iov, *rec;
 
   MP_shed(&conn->send.rec[1], conn->send.reclen - 1);
@@ -76,6 +85,9 @@ static inline int handle_sendmsg(Conn *conn, int res, bool zc) {
 }
 
 static inline int find_route(Server *serv, char *bptr) {
+  if (!serv || !bptr)
+    return -1;
+
   Request req;
   memset(&req, 0, sizeof(Request));
   if (read_method(&req.method, bptr) < 0)
@@ -94,6 +106,9 @@ static inline int find_route(Server *serv, char *bptr) {
 }
 
 static inline int run_handler(Server *serv, Conn *conn) {
+  if (!serv || !conn || conn->fd == -1)
+    return -1;
+
   Param   params[config.max_nparams];
   Header  headers[config.max_nheaders];
   Request req;
@@ -114,7 +129,9 @@ static inline int run_handler(Server *serv, Conn *conn) {
     return -1;
   }
 
+  current_req = &req;
   conn->send.len = 0;
+  
   bool uses_body = serv->routes[route_index].uses_body;
   bool has_body = conn->recv.len > 0;
   if (uses_body && has_body) {
@@ -256,13 +273,12 @@ static inline int handle_recv(Server *serv, Conn *conn, int res) {
 
 static inline void handle_timeout(Conntimeout *timeout) {
   Conn *conn = timeout->conn;
-  conn->cqe_count--;
+  if (conn->fd == -1)
+    return;
+  // conn->cqe_count--;
 
   uint64_t now = get_time();
-  if (pool.timeout != 0 && (now - timeout->last_used) >= pool.timeout)
-    return MP_clear(conn);
-
-  if (conn->flags & CF_CANCEL || utimeout(conn) < 0)
+  if (now - timeout->last_used >= pool.timeout || utimeout(conn) < 0)
     return MP_clear(conn);
 }
 
@@ -346,19 +362,15 @@ static inline int serv_listen(Server *serv) {
       current_conn = conn;
     }
 
+    if (conn && conn->fd == -1) {
+      io_uring_cqe_seen(&ring, cqe);
+      continue;
+    }
+
     if (res > 0) {
       if (cqe->user_data == ACCEPT) {
         new_conn(res);
       } else if (conn && conn->fd != -1) {
-        conn->cqe_count--;
-
-        if (conn->flags & CF_CANCEL) {
-          if (conn->cqe_count == 0)
-            MP_clear(conn);
-          io_uring_cqe_seen(&ring, cqe);
-          continue;
-        }
-
         conn->timeout.last_used = get_time();
         switch (conn->op) {
         case FRECV:
@@ -379,7 +391,6 @@ static inline int serv_listen(Server *serv) {
       }
     } else if (res == 0) {
       if (conn && conn->fd != -1) {
-        conn->cqe_count--;
         switch (conn->op) {
         case SENDMSGZC:
           if (cqe->flags & IORING_CQE_F_NOTIF) {
@@ -395,7 +406,6 @@ static inline int serv_listen(Server *serv) {
       }
     } else {
       if (conn && conn->fd != -1) {
-        conn->cqe_count--;
         if (res != -EAGAIN && res != -EWOULDBLOCK && res != -EINTR)
           MP_clear(conn);
         else if (ufrecv(conn) < 0)
@@ -417,6 +427,11 @@ static inline int _HK_write(void *data, size_t size) {
   int    iov_index, rec_index;
   IOV   *iov, *rec;
   bool   once;
+
+  if (current_req->method == HEAD) {
+    current_conn->send.len += size;
+    return 0;
+  }
 
   iov_index = current_conn->send.iovlen - 1;
   rec_index = current_conn->send.reclen - 1;
